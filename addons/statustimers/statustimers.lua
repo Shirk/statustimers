@@ -392,11 +392,15 @@ end
 ]]--
 status_icon_base.try_cancel = function(self)
     if (self:is_active()) then
-        local status_hi = bit.rshift(self.status_id, 8);
-        local status_lo = bit.band(self.status_id, 0xFF);
+        local icon_data = AshitaCore:GetResourceManager():GetStatusIconById(self.status_id);
+        if (icon_data.CanCancel == 1) then
+            local status_hi = bit.rshift(self.status_id, 8);
+            local status_lo = bit.band(self.status_id, 0xFF);
 
-        -- there's at loast two bytes of unknown data in here.. :(
-        AshitaCore:GetPacketManager():AddOutgoingPacket(0xF1, { 0x00, 0x00, 0x00, 0x00, status_lo, status_hi, 0x00, 0x00 });
+            AshitaCore:GetPacketManager():AddOutgoingPacket(0xF1, { 0x00, 0x00, 0x00, 0x00, status_lo, status_hi, 0x00, 0x00 });
+        else
+            print('status is not cancellable')
+        end
     end
 end
 
