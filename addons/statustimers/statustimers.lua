@@ -443,7 +443,7 @@ local get_status_duration = function(index)
             local raw_duration = AshitaCore:GetMemoryManager():GetPlayer():GetStatusTimers()[index];
 
             raw_duration = (raw_duration / 60) + 572662306 + vanabasestamp;
-            if (raw_duration > timestamp) then
+            if (raw_duration > timestamp and ((raw_duration - timestamp) / 3600) <= 99) then
                 return raw_duration - timestamp;
             end
         end
