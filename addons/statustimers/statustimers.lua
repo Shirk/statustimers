@@ -19,7 +19,7 @@
 
 addon.name      = 'statustimers';
 addon.author    = 'heals';
-addon.version   = '1.0.0';
+addon.version   = '1.0.3';
 addon.desc      = 'Replacement for the default status timer display';
 addon.link      = 'https://github.com/Shirk/statustimers';
 
@@ -86,6 +86,7 @@ local status_icon_base = T{
     bar_index = -1,
     status_id = 0,
     duration  = 0,
+    animation = 0,
     text = {
         id  = '',
         obj = nil,
@@ -255,7 +256,11 @@ status_icon_base.update = function (self, status_id, duration)
         if (duration >= 3600) then
             label = string.format('%dh', duration / 3600);
         else
-            label = string.format('%dm', duration / 60);
+            if (duration >= 60) then
+                label = string.format('%dm', duration / 60);
+            else
+                label = string.format('%d', duration + 1);
+            end
         end
 
         self.duration = duration;
@@ -263,7 +268,7 @@ status_icon_base.update = function (self, status_id, duration)
         self.text.obj:SetVisible(true);
         self.text.obj:GetTextSize(dim);
         self.text.obj:SetPositionX(pos.cx + ((self:get_size().cx - dim.cx) / 2));
-        self.text.obj:SetVisible(true);
+        self.text.obj:SetVisible(duration > 5);
     end
 
     if (self.status_id ~= status_id) then
@@ -271,15 +276,51 @@ status_icon_base.update = function (self, status_id, duration)
         local scale = settings.icons.size / ICON_RES_SIZE;
 
         self.status_id = status_id;
+        self.animation = 0;
         self:set_icon_from_theme(status_id);
         self.icon.obj:GetBackground():SetScaleX(scale);
         self.icon.obj:GetBackground():SetScaleY(scale);
         self.icon.obj:SetPositionX(pos.cx + ((self:get_size().cx - settings.icons.size) / 2));
         self.icon.obj:GetBackground():SetVisible(true);
+        self.icon.obj:GetBackground():SetColor(0xFFFFFFFF);
         self.icon.obj:SetVisible(true);
     end
 
     return true;
+end
+
+--[[
+* Update the items transparency animation (only has any effect for the last 15sec)
+*
+* @param {self} - the status_icon
+]]--
+status_icon_base.update_animation = function(self)
+    if (self:is_active() == false) then
+        return;
+    end
+
+    -- let's be a bit fancy for the last 15sec (this causes the icon to blink)
+    if (self.duration <= 15) then
+        local color = self.icon.obj:GetBackground():GetColor();
+        local alpha = math.round(color / 2 ^ 24);
+        local delta = 15 * 2 ^ 24;
+
+        if (self.animation == 0) then
+            if (alpha > 0x2F) then
+                color = color - delta;
+            else
+                self.animation = 1;
+            end
+        elseif (self.animation == 1) then
+            if (alpha < 0xFF) then
+                color = color + delta;
+            else
+                self.animation = 0;
+            end
+        end
+
+        self.icon.obj:GetBackground():SetColor(color);
+    end
 end
 
 --[[
@@ -502,10 +543,18 @@ end
 * Status items will still only be updated once per second.
 ]]--
 local update_ui = function()
-    if (ui.last_update ~= os.clock()) then
-        local dimensions = SIZE.new();
+    local perform_updates = false;
+    local dimensions = nil;
 
-        for i = 1, MAX_STATUS, 1 do
+    if (ui.last_update ~= os.clock()) then
+        perform_updates = true;
+        dimensions = SIZE.new();
+    end
+
+    for i = 1, MAX_STATUS, 1 do
+        ui.status_icons[i]:update_animation();
+
+        if (perform_updates == true) then
             ui.status_icons[i]:update(get_status_id(i), get_status_duration(i));
 
             if (ui.status_icons[i]:is_active()) then
@@ -516,14 +565,16 @@ local update_ui = function()
                 dimensions.cy = math.max(dimensions.cy, pos.cy + size.cy)
             end
         end
+    end
 
+    if (dimensions ~= nil) then
         -- update the container size to wrap only the visible status icons
         ui.icon_container:GetBackground():SetWidth(dimensions.cx);
         ui.icon_container:GetBackground():SetHeight(dimensions.cy);
 
         settings.layout.pos_x = ui.icon_container:GetPositionX();
         settings.layout.pos_y = ui.icon_container:GetPositionY();
- 
+
         ui.last_update = os.clock();
     end
 end
