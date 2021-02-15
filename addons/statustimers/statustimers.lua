@@ -19,7 +19,7 @@
 
 addon.name      = 'statustimers';
 addon.author    = 'heals';
-addon.version   = '1.0.3';
+addon.version   = '1.1.0';
 addon.desc      = 'Replacement for the default status timer display';
 addon.link      = 'https://github.com/Shirk/statustimers';
 
@@ -140,16 +140,7 @@ status_icon_base.setup = function(self, index)
     self.text.obj:SetFontFamily(settings.font.family);
     self.text.obj:SetFontHeight(settings.font.size);
     self.text.obj:SetColor(settings.font.color);
---[[
--- TODO: ask atom0s about mouse callbacks in lua
 
-    self.icon.obj:GetBackground():SetMouseCallback(function (event_id, object, xpos, ypos)
-       if (event_id == 1) then
-        -- FIXME: are the Ashita::MouseEvent constants available in lua?
-        print('right click on %s', self);
-       end 
-    end);
---]]
     return self;
 end
 
@@ -381,6 +372,35 @@ status_icon_base.is_active = function(self)
 end
 
 --[[
+* Wrapper to hit test both the image and label of this icon
+*
+* @param {self} - the status_icon
+* @param {x} - the x coordinate to test for
+* @param {y} - the y coordinate to test for
+]]--
+status_icon_base.hit_test = function(self, x, y)
+    if (self:is_active()) then
+        return self.text.obj:HitTest(x, y) or self.icon.obj:HitTest(x, y);
+    end
+    return false;
+end
+
+--[[
+* Try to cancel this status effect by sending a Cancel package
+*
+* @param {self} - the status_icon
+]]--
+status_icon_base.try_cancel = function(self)
+    if (self:is_active()) then
+        local status_hi = bit.rshift(self.status_id, 8);
+        local status_lo = bit.band(self.status_id, 0xFF);
+
+        -- there's at loast two bytes of unknown data in here.. :(
+        AshitaCore:GetPacketManager():AddOutgoingPacket(0xF1, { 0x00, 0x00, 0x00, 0x00, status_lo, status_hi, 0x00, 0x00 });
+    end
+end
+
+--[[
 * Returns a new status_icon
 *
 * @param {index} - the bar index this icon is assigned to
@@ -590,6 +610,34 @@ local release_ui = function()
     AshitaCore:GetFontManager():Delete(ICON_CONTAINER_ID);
 end
 
+--[[
+* Try to cancel the status effect for the status icon at x,y.
+* Returns true if an icon was found.
+*
+* @param {x} - the x coordinate of the hit test
+* @param {y} - the y coordinate of the hit test
+]]--
+local try_cancel_status = function(x, y)
+    local top_left = SIZE.new();
+    local bot_right = SIZE.new();
+
+    top_left.cx = ui.icon_container:GetPositionX();
+    top_left.cy = ui.icon_container:GetPositionY();
+    bot_right.cx = top_left.cx + ui.icon_container:GetBackground():GetWidth();
+    bot_right.cy = top_left.cy + ui.icon_container:GetBackground():GetHeight();
+
+    if (x >= top_left.cx and x <= bot_right.cx and
+        y >= top_left.cy and y <= bot_right.cy) then
+        for i = 1, MAX_STATUS, 1 do
+            if (ui.status_icons[i]:hit_test(x, y)) then
+                ui.status_icons[i]:try_cancel()
+                return true;
+            end
+        end
+    end
+    return false;
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Ashita addon callbacks
 ----------------------------------------------------------------------------------------------------
@@ -610,6 +658,14 @@ ashita.events.register('unload', 'statustimers_unload', function ()
     release_ui();
     save_settings(settings);
     AshitaCore:GetPointerManager():Delete(REALUTCSTAMP_ID);
+end);
+
+ashita.events.register('mouse', 'statustimers_mouse', function (e)
+    if (e.message == 0x205) then
+        if (try_cancel_status(e.x, e.y)) then
+            e.blocked = true;
+        end
+    end
 end);
 
 ashita.events.register('d3d_endscene', 'statustimers_endscene', function (isRenderingBackBuffer)
