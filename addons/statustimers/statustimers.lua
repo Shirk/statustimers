@@ -24,6 +24,7 @@ addon.desc      = 'Replacement for the default status timer display';
 addon.link      = 'https://github.com/Shirk/statustimers';
 
 local common = require('common');
+local bit = require('bit');
 
 ----------------------------------------------------------------------------------------------------
 -- local constants
@@ -302,8 +303,8 @@ status_icon_base.update_animation = function(self)
     -- let's be a bit fancy for the last 15sec (this causes the icon to blink)
     if (self.duration <= 15) then
         local color = self.icon.obj:GetBackground():GetColor();
-        local alpha = math.round(color / 2 ^ 24);
-        local delta = 15 * 2 ^ 24;
+        local alpha = bit.rshift(color, 24);
+        local delta = bit.lshift(15, 24);
 
         if (self.animation == 0) then
             if (alpha > 0x2F) then
