@@ -23,5 +23,4 @@ statustimers supports custom (non DAT) themes, for details see _addons/statustim
 
 #### TODOs
 
-- support to hide the original client icons completely
-- support to right click on a status icon to remove the status effect
+- support to hide the original client icons completely => DAT mod for pivot?
