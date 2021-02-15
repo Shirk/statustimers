@@ -9,6 +9,7 @@ statustimers support the use of custom icon themes matching the following specif
 
 A sample theme called 'kupo' would look like this:
 
+```
 themes/
  +-- kupo/
       +-- 0.bmp   -- fallback for missing icons (optional)
@@ -16,9 +17,11 @@ themes/
       +-- 2.bmp   -- icon for status ID 2
       ...
       +-- 639.bmp -- icon for status ID 639
+```
 
 This theme would be activated by setting the 'theme' parameter in statustimers.ini to 'kupo':
 
+```ini
 [icons]
 theme = kupo
-
+```
