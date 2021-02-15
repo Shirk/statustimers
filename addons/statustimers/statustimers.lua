@@ -319,7 +319,7 @@ status_icon_base.set_icon_from_theme = function(self, status_id)
             self.icon.obj:GetBackground():SetTextureFromFile(icon_path);
         end
 
-        return
+        return;
     end
 
     -- no custom theme / no fallback, use the default icons
@@ -422,11 +422,11 @@ local get_status_id = function(index)
         if (AshitaCore:GetMemoryManager():GetPlayer() ~= nil) then
             local icon = AshitaCore:GetMemoryManager():GetPlayer():GetStatusIcons()[index];
             if (icon ~= nil) then
-                return icon
+                return icon;
             end
         end
     end
-    return -1
+    return -1;
 end
 
 --[[
@@ -448,11 +448,11 @@ local get_status_duration = function(index)
             end
         end
     end
-    return -1
+    return -1;
 end
 
 ----------------------------------------------------------------------------------------------------
--- status id and duration helpers
+-- UI creation, setup, update and teardown
 ----------------------------------------------------------------------------------------------------
 
 --[[
@@ -566,6 +566,6 @@ ashita.events.register('d3d_endscene', 'statustimers_endscene', function (isRend
     end
 
     if (setup_ui() == false) then
-        update_ui()
+        update_ui();
     end
 end);
