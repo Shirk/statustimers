@@ -19,8 +19,3 @@ The updated location will be stored automatically.
 #### theming support
 
 statustimers supports custom (non DAT) themes, for details see _addons/statustimers/themes/README.md_
-
-
-#### TODOs
-
-- support to hide the original client icons completely => DAT mod for pivot?
