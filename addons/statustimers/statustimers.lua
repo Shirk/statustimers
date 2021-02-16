@@ -55,9 +55,10 @@ local default_settings = T{
     },
 
     font = {
-        family = 'Arial',
-        size   = 10,
-        color  = 0xFFFFFFFF,
+        family  = 'Arial',
+        size    = 10,
+        color   = 0xFFFFFFFF,
+        outline = 0x00000000,
     },
 
     icons = {
@@ -155,6 +156,11 @@ status_icon_base.setup = function(self, index)
     self.text.obj:SetFontFamily(settings.font.family);
     self.text.obj:SetFontHeight(settings.font.size);
     self.text.obj:SetColor(settings.font.color);
+    self.text.obj:SetColorOutline(settings.font.outline);
+
+    if (settings.font.outline ~= 0x00000000) then
+        self.text.obj:SetDrawFlags(16);
+    end
 
     return self;
 end
@@ -451,18 +457,23 @@ local load_merged_settings = function(defaults)
     local ini_file = string.format('%s.ini', addon.name);
     local s = defaults:copy(true);
     if (config:Load(addon.name, ini_file)) then
-        s.font.family  = config:GetString(addon.name, 'font',   'family', defaults.font.family);
-        s.font.size    = config:GetUInt16(addon.name, 'font',   'size',   defaults.font.size);
-        s.font.color   = config:GetString(addon.name, 'font',   'color',  string.format('0x%08x', defaults.font.color));
-        s.font.color   = tonumber(s.font.color); -- required to parse hex strings
-        s.icons.theme  = config:GetString(addon.name, 'icons',  'theme',  defaults.icons.theme);
-        s.icons.size   = config:GetUInt16(addon.name, 'icons',  'size',   defaults.icons.size);
-        s.layout.rows  = config:GetUInt16(addon.name, 'layout', 'rows',   defaults.layout.rows);
-        s.layout.pos_x = config:GetUInt32(addon.name, 'layout', 'pos_x',  defaults.layout.pos_x);
-        s.layout.pos_y = config:GetUInt32(addon.name, 'layout', 'pos_y',  defaults.layout.pos_y);
+        s.font.family  = config:GetString(addon.name, 'font',   'family',  defaults.font.family);
+        s.font.size    = config:GetUInt16(addon.name, 'font',   'size',    defaults.font.size);
+        s.font.color   = config:GetString(addon.name, 'font',   'color',   nil) or string.format('0x%08x', defaults.font.color);
+        s.font.outline = config:GetString(addon.name, 'font',   'outline', nil) or string.format('0x%08x', defaults.font.outline);
+        s.icons.theme  = config:GetString(addon.name, 'icons',  'theme',   defaults.icons.theme);
+        s.icons.size   = config:GetUInt16(addon.name, 'icons',  'size',    defaults.icons.size);
+        s.layout.rows  = config:GetUInt16(addon.name, 'layout', 'rows',    defaults.layout.rows);
+        s.layout.pos_x = config:GetUInt32(addon.name, 'layout', 'pos_x',   defaults.layout.pos_x);
+        s.layout.pos_y = config:GetUInt32(addon.name, 'layout', 'pos_y',   defaults.layout.pos_y);
 
         s.misc.native_item_mask = config:GetUInt16(addon.name, 'misc', 'native_item_mask', defaults.misc.native_item_mask);
         s.misc.show_tooltips    = config:GetBool(addon.name,   'misc', 'show_tooltips',    defaults.misc.show_tooltips);
+
+        -- color and outline need to be converted from a number string to an actual number
+        -- doing it this way to be able to parse hex strings from the config instead of big numbers
+        s.font.color   = tonumber(s.font.color);
+        s.font.outline = tonumber(s.font.outline);
     end
     return s;
 end
@@ -477,14 +488,16 @@ local save_settings = function(data)
     local ini_file = string.format('%s.ini', addon.name);
 
     config:Delete(addon.name, ini_file);
-    config:SetValue(addon.name, 'font',   'family', data.font.family);
-    config:SetValue(addon.name, 'font',   'size',   tostring(data.font.size));
-    config:SetValue(addon.name, 'font',   'color',  string.format('0x%08x', data.font.color));
-    config:SetValue(addon.name, 'icons',  'theme',  data.icons.theme);
-    config:SetValue(addon.name, 'icons',  'size',   tostring(data.icons.size));
-    config:SetValue(addon.name, 'layout', 'rows',   tostring(data.layout.rows));
-    config:SetValue(addon.name, 'layout', 'pos_x',  tostring(data.layout.pos_x));
-    config:SetValue(addon.name, 'layout', 'pos_y',  tostring(data.layout.pos_y));
+    config:SetValue(addon.name, 'font',   'family',  data.font.family);
+    config:SetValue(addon.name, 'font',   'size',    tostring(data.font.size));
+    config:SetValue(addon.name, 'font',   'color',   string.format('0x%08x', data.font.color));
+    config:SetValue(addon.name, 'font',   'outline', string.format('0x%08x', data.font.outline));
+    config:SetValue(addon.name, 'icons',  'theme',   data.icons.theme);
+    config:SetValue(addon.name, 'icons',  'size',    tostring(data.icons.size));
+    config:SetValue(addon.name, 'layout', 'rows',    tostring(data.layout.rows));
+    config:SetValue(addon.name, 'layout', 'pos_x',   tostring(data.layout.pos_x));
+    config:SetValue(addon.name, 'layout', 'pos_y',   tostring(data.layout.pos_y));
+
     config:SetValue(addon.name, 'misc',   'native_item_mask', tostring(data.misc.native_item_mask));
     config:SetValue(addon.name, 'misc',   'show_tooltips',    tostring(data.misc.show_tooltips));
     config:Save(addon.name, ini_file);
