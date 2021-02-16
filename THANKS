@@ -1,0 +1,11 @@
+Thanks go out to the following people from Ashita's discord for sharing their
+insight and support without which this addon wouldn't have been possible in 
+the first place.
+
+Thorny - For writing the original statustimers plugin and sharing details
+         on how to calculate status durations and for the required signatures.
+
+atom0s - For finding and sharing the signatures required to toggle visibility
+         of the in-game status icons as well as providing the v4 Addon SDK.
+
+#developers for keeping up with my banter and sometimes really dumb questions.
