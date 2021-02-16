@@ -38,6 +38,7 @@ local STATUSHANDLER1_ID = 'statustimers:status_handler_1';
 local STATUSHANDLER2_ID = 'statustimers:status_handler_2';
 
 local ICON_CONTAINER_ID = 'statustimers:icon_container';
+local TOOLTIP_ID = 'statustimers:tooltip';
 
 local THEME_ICON_TEMPLATE = '%s\\themes\\%s\\%s.bmp';
 
@@ -50,6 +51,7 @@ local INFINITE_DURATION = 0x7FFFFFFF;
 local default_settings = T{
     misc = {
         native_item_mask = 0,
+        show_tooltips = true
     },
 
     font = {
@@ -80,6 +82,7 @@ local settings = T{};
 local ui = T{
     icon_container = nil,
     status_icons   = {},
+    tooltip        = nil,
 
     init_done      = false,
     last_update    = 0,
@@ -108,6 +111,7 @@ local status_icon_base = T{
         id  = '',
         obj = nil,
     },
+    description = ''
 };
 
 local status_icon_mt = {
@@ -289,6 +293,12 @@ status_icon_base.update = function (self, status_id, duration)
         self.icon.obj:GetBackground():SetVisible(true);
         self.icon.obj:GetBackground():SetColor(0xFFFFFFFF);
         self.icon.obj:SetVisible(true);
+
+        self.description = 'description unavailable';
+        local status_info = AshitaCore:GetResourceManager():GetStatusIconById(status_id)
+        if (status_info ~= nil) then
+            self.description = status_info.Description[1] or self.description;
+        end
     end
 
     return true;
@@ -450,7 +460,9 @@ local load_merged_settings = function(defaults)
         s.layout.rows  = config:GetUInt16(addon.name, 'layout', 'rows',   defaults.layout.rows);
         s.layout.pos_x = config:GetUInt32(addon.name, 'layout', 'pos_x',  defaults.layout.pos_x);
         s.layout.pos_y = config:GetUInt32(addon.name, 'layout', 'pos_y',  defaults.layout.pos_y);
+
         s.misc.native_item_mask = config:GetUInt16(addon.name, 'misc', 'native_item_mask', defaults.misc.native_item_mask);
+        s.misc.show_tooltips    = config:GetBool(addon.name,   'misc', 'show_tooltips',    defaults.misc.show_tooltips);
     end
     return s;
 end
@@ -473,7 +485,8 @@ local save_settings = function(data)
     config:SetValue(addon.name, 'layout', 'rows',   tostring(data.layout.rows));
     config:SetValue(addon.name, 'layout', 'pos_x',  tostring(data.layout.pos_x));
     config:SetValue(addon.name, 'layout', 'pos_y',  tostring(data.layout.pos_y));
-    config:SetValue(addon.name, 'misc', 'native_item_mask', tostring(data.misc.native_item_mask));
+    config:SetValue(addon.name, 'misc',   'native_item_mask', tostring(data.misc.native_item_mask));
+    config:SetValue(addon.name, 'misc',   'show_tooltips',    tostring(data.misc.show_tooltips));
     config:Save(addon.name, ini_file);
 end
 
@@ -554,6 +567,15 @@ local create_ui = function()
     ui.icon_container:SetAutoResize(false);
     ui.icon_container:GetBackground():SetColor(0x00000000);
     ui.icon_container:GetBackground():SetVisible(true);
+
+    ui.tooltip = AshitaCore:GetFontManager():Create(TOOLTIP_ID);
+    ui.tooltip:SetFontFamily(settings.font.family);
+    ui.tooltip:SetFontHeight(settings.font.size);
+    ui.tooltip:SetColor(0xFFFFFFFF);
+    ui.tooltip:GetBackground():SetColor(0x77000000);
+    ui.tooltip:GetBackground():SetVisible(true);
+    ui.tooltip:SetVisible(false);
+
 end
 
 --[[
@@ -747,7 +769,7 @@ end
 * @param {x} - the x coordinate of the hit test
 * @param {y} - the y coordinate of the hit test
 ]]--
-local try_cancel_status = function(x, y)
+local check_status_cancel = function(x, y)
     local top_left = SIZE.new();
     local bot_right = SIZE.new();
 
@@ -768,6 +790,42 @@ local try_cancel_status = function(x, y)
     return false;
 end
 
+--[[
+* Check if the mouse is hovering over a status item and show a tooltip if so
+*
+* @param {x} - the x coordinate for hit testing
+* @param {y} - the y coordinate for hit testing
+]]--
+local maybe_show_tooltip = function(x, y)
+    if (settings.misc.show_tooltips == false) then
+        return;
+    end
+
+    local top_left = SIZE.new();
+    local bot_right = SIZE.new();
+
+    top_left.cx = ui.icon_container:GetPositionX();
+    top_left.cy = ui.icon_container:GetPositionY();
+    bot_right.cx = top_left.cx + ui.icon_container:GetBackground():GetWidth();
+    bot_right.cy = top_left.cy + ui.icon_container:GetBackground():GetHeight();
+
+    if (x >= top_left.cx and x <= bot_right.cx and
+        y >= top_left.cy and y <= bot_right.cy) then
+        for i = 1, MAX_STATUS, 1 do
+            if (ui.status_icons[i]:hit_test(x, y)) then
+                ui.tooltip:SetText(ui.status_icons[i].description);
+                ui.tooltip:SetPositionX(x + 10);
+                ui.tooltip:SetPositionY(y + 15);
+                ui.tooltip:SetVisible(true);
+                return;
+            end
+        end
+    end
+
+    if (ui.tooltip:GetVisible()) then
+        ui.tooltip:SetVisible(false);
+    end
+end
 ----------------------------------------------------------------------------------------------------
 -- Ashita addon callbacks
 ----------------------------------------------------------------------------------------------------
@@ -791,9 +849,11 @@ end);
 
 ashita.events.register('mouse', 'statustimers_mouse', function (e)
     if (e.message == 0x205) then
-        if (try_cancel_status(e.x, e.y)) then
+        if (check_status_cancel(e.x, e.y)) then
             e.blocked = true;
         end
+    elseif (e.message == 0x200) then
+        maybe_show_tooltip(e.x, e.y);
     end
 end);
 
