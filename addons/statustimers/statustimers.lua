@@ -34,6 +34,9 @@ local MAX_STATUS = 32;
 local ICON_RES_SIZE = 32;
 
 local REALUTCSTAMP_ID = 'statustimers:realutcstamp';
+local STATUSHANDLER1_ID = 'statustimers:status_handler_1';
+local STATUSHANDLER2_ID = 'statustimers:status_handler_2';
+
 local ICON_CONTAINER_ID = 'statustimers:icon_container';
 
 local THEME_ICON_TEMPLATE = '%s\\themes\\%s\\%s.bmp';
@@ -45,6 +48,10 @@ local INFINITE_DURATION = 0x7FFFFFFF;
 ----------------------------------------------------------------------------------------------------
 
 local default_settings = T{
+    misc = {
+        native_item_mask = 0,
+    },
+
     font = {
         family = 'Arial',
         size   = 10,
@@ -76,6 +83,8 @@ local ui = T{
 
     init_done      = false,
     last_update    = 0,
+
+    handler_data   = { 0x0000, 0x0000 }
 };
 
 ----------------------------------------------------------------------------------------------------
@@ -248,7 +257,7 @@ status_icon_base.update = function (self, status_id, duration)
         local dim = SIZE.new();
 
         if (duration == INFINITE_DURATION) then
-            label = ' ';
+            label = '--';
         elseif (duration >= 3600) then
             label = string.format('%dh', duration / 3600);
         else
@@ -441,6 +450,7 @@ local load_merged_settings = function(defaults)
         s.layout.rows  = config:GetUInt16(addon.name, 'layout', 'rows',   defaults.layout.rows);
         s.layout.pos_x = config:GetUInt32(addon.name, 'layout', 'pos_x',  defaults.layout.pos_x);
         s.layout.pos_y = config:GetUInt32(addon.name, 'layout', 'pos_y',  defaults.layout.pos_y);
+        s.misc.native_item_mask = config:GetUInt16(addon.name, 'misc', 'native_item_mask', defaults.misc.native_item_mask);
     end
     return s;
 end
@@ -463,6 +473,7 @@ local save_settings = function(data)
     config:SetValue(addon.name, 'layout', 'rows',   tostring(data.layout.rows));
     config:SetValue(addon.name, 'layout', 'pos_x',  tostring(data.layout.pos_x));
     config:SetValue(addon.name, 'layout', 'pos_y',  tostring(data.layout.pos_y));
+    config:SetValue(addon.name, 'misc', 'native_item_mask', tostring(data.misc.native_item_mask));
     config:Save(addon.name, ini_file);
 end
 
@@ -623,6 +634,112 @@ local release_ui = function()
     AshitaCore:GetFontManager():Delete(ICON_CONTAINER_ID);
 end
 
+----------------------------------------------------------------------------------------------------
+-- misc. helpers
+----------------------------------------------------------------------------------------------------
+
+--[[
+* Scan for the required memory signatures and return true if all could be added.
+]]--
+local add_pointers = function()
+    local pm = AshitaCore:GetPointerManager();
+
+    --[[
+    - REALUTCSTAMP_ID - pointer-to-pointer-to struct used to read the games UTC timestamp
+                        credits go to Thorny for providing this signature
+    ]]--
+    pm:Add(REALUTCSTAMP_ID, 'FFXiMain.dll', '8B0D????????8B410C8B49108D04808D04808D04808D04C1C3', 2, 0);
+
+    if (pm:Get(REALUTCSTAMP_ID) == nil) then
+        print('statustimers: unable to find REALUTCSTAMP signature');
+        return false;
+    end
+
+    --[[
+    - STATUSHANDLER1_ID - code location inside the players status icon display
+    - STATUSHANDLER2_ID - code location inside the party status icon display
+                          both signatures were kindly provided by atom0s
+    ]]--
+    pm:Add(STATUSHANDLER1_ID, 'FFXiMain.dll', '75??55518B0D????????E8????????85C07F??8BDE', 0, 0);
+    if (pm:Get(STATUSHANDLER1_ID) == nil) then
+        print('statustimers: unable to find STATUSHANDLER1 signature');
+        return false;
+    end
+
+    -- scan for the second pointer (same signature, but next match)
+    pm:Add(STATUSHANDLER2_ID, 'FFXiMain.dll', '75??55518B0D????????E8????????85C07F??8BDE', 0, 1);
+    if (pm:Get(STATUSHANDLER2_ID) == nil) then
+        print('statustimers: unable to find STATUSHANDLER2 signature');
+        return false;
+    end
+
+    if (pm:Get(STATUSHANDLER1_ID) == pm:Get(STATUSHANDLER2_ID)) then
+        print('statustimers: STATUSHANDLER1 == STATUSHANDLER2 - error');
+        return false;
+    end
+
+    ui.handler_data[1] = ashita.memory.read_uint16(pm:Get(STATUSHANDLER1_ID));
+    ui.handler_data[2] = ashita.memory.read_uint16(pm:Get(STATUSHANDLER2_ID));
+    return true;
+end
+
+--[[
+* Release all pointers previously added by add_pointers
+]]--
+local release_pointers = function()
+    local pm = AshitaCore:GetPointerManager();
+
+    if (pm:Get(REALUTCSTAMP_ID) ~= nil) then
+        pm:Delete(REALUTCSTAMP_ID);
+    end
+
+    if (pm:Get(STATUSHANDLER1_ID) ~= nil) then
+        if (ui.handler_data[1] ~= 0x0000) then
+            ashita.memory.write_uint16(pm:Get(STATUSHANDLER1_ID), ui.handler_data[1]);
+        end
+        pm:Delete(STATUSHANDLER1_ID);
+    end
+    
+    if (pm:Get(STATUSHANDLER2_ID) ~= nil) then
+        if (ui.handler_data[2] ~= 0x0000) then
+            ashita.memory.write_uint16(pm:Get(STATUSHANDLER1_ID), ui.handler_data[2]);
+        end
+        pm:Delete(STATUSHANDLER2_ID);
+    end
+end
+
+--[[
+* Change the display behavior of the native status items.
+*
+* This function uses a bitmask to set the visibility of the native status items.
+*
+* bit 1 - toggles the visibility of the player's status items
+* bit 2 - toggles the visibility of the partie's status items
+*
+* Examples: 0 - hide all, 1 - show own, 2 - show party, 3 show all
+*
+* @param {visibility_mask} - the new visibility bitmask
+]]--
+local set_native_status = function(visibility_mask)
+    local pm = AshitaCore:GetPointerManager();
+
+    if (pm:Get(STATUSHANDLER1_ID) == nil or pm:Get(STATUSHANDLER2_ID) == nil) then
+        return;
+    end
+
+    if (bit.band(visibility_mask, 1) == 0) then
+        ashita.memory.write_uint16(pm:Get(STATUSHANDLER1_ID), 0x9090);
+    else
+        ashita.memory.write_uint16(pm:Get(STATUSHANDLER1_ID), ui.handler_data[1]);
+    end
+
+    if (bit.band(visibility_mask, 2) == 0) then
+        ashita.memory.write_uint16(pm:Get(STATUSHANDLER2_ID), 0x9090);
+    else
+        ashita.memory.write_uint16(pm:Get(STATUSHANDLER2_ID), ui.handler_data[2]);
+    end
+end
+
 --[[
 * Try to cancel the status effect for the status icon at x,y.
 * Returns true if an icon was found.
@@ -656,21 +773,20 @@ end
 ----------------------------------------------------------------------------------------------------
 
 ashita.events.register('load', 'statustimers_load', function ()
-    AshitaCore:GetPointerManager():Add(REALUTCSTAMP_ID, 'FFXiMain.dll', '8B0D????????8B410C8B49108D04808D04808D04808D04C1C3', 2, 0);
-
-    if (AshitaCore:GetPointerManager():Get(REALUTCSTAMP_ID) == nil) then
+    if (add_pointers() == false) then
         print('unable to locate required memory signatures');
         return false;
     end
 
     settings = load_merged_settings(default_settings);
+    set_native_status(settings.misc.native_item_mask);
     create_ui();
 end);
 
 ashita.events.register('unload', 'statustimers_unload', function ()
     release_ui();
+    release_pointers();
     save_settings(settings);
-    AshitaCore:GetPointerManager():Delete(REALUTCSTAMP_ID);
 end);
 
 ashita.events.register('mouse', 'statustimers_mouse', function (e)
