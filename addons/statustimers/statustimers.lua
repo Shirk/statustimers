@@ -38,6 +38,8 @@ local ICON_CONTAINER_ID = 'statustimers:icon_container';
 
 local THEME_ICON_TEMPLATE = '%s\\themes\\%s\\%s.bmp';
 
+local INFINITE_DURATION = 0x7FFFFFFF;
+
 ----------------------------------------------------------------------------------------------------
 -- local settings and ui objects
 ----------------------------------------------------------------------------------------------------
@@ -245,7 +247,9 @@ status_icon_base.update = function (self, status_id, duration)
         local label = '';
         local dim = SIZE.new();
 
-        if (duration >= 3600) then
+        if (duration == INFINITE_DURATION) then
+            label = ' ';
+        elseif (duration >= 3600) then
             label = string.format('%dh', duration / 3600);
         else
             if (duration >= 60) then
@@ -508,7 +512,12 @@ local get_status_duration = function(index)
             local timestamp = get_real_utcstamp();
             local raw_duration = AshitaCore:GetMemoryManager():GetPlayer():GetStatusTimers()[index];
 
+            if (raw_duration == INFINITE_DURATION) then
+                return INFINITE_DURATION;
+            end
+
             raw_duration = (raw_duration / 60) + 572662306 + vanabasestamp;
+
             if (raw_duration > timestamp and ((raw_duration - timestamp) / 3600) <= 99) then
                 return raw_duration - timestamp;
             end
