@@ -16,6 +16,13 @@ To change any of these settings make sure statustimers in unloaded, then edit _c
 To visually change the position hold down shift and drag statustimers to the desired screen position.
 The updated location will be stored automatically.
 
+In addition to these appearance options there's als a "visual aid" mode which will add a coloured bar
+below each status effect indicating it's remaining duration visually as green/yellow/orange/red/red flashing.
+
 #### theming support
 
 statustimers supports custom (non DAT) themes, for details see _addons/statustimers/themes/README.md_
+
+#### TODO:
+
+- add support to specify source icon size for themes
