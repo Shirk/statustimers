@@ -19,7 +19,7 @@
 
 addon.name      = 'statustimers';
 addon.author    = 'heals';
-addon.version   = '1.2.0';
+addon.version   = '1.3.0';
 addon.desc      = 'Replacement for the default status timer display';
 addon.link      = 'https://github.com/Shirk/statustimers';
 
@@ -51,7 +51,21 @@ local INFINITE_DURATION = 0x7FFFFFFF;
 local default_settings = T{
     misc = {
         native_item_mask = 0,
-        show_tooltips = true
+        show_tooltips = true,
+    },
+
+    visual_aid = {
+        enabled  = false,
+        include  = T{ '*' },
+        exclude  = T{},
+        flash_at = 15,
+        color100 = 0xFF00FF00, -- green
+        color75  = 0xFFFFFF33, -- yellow
+        color50  = 0xFFFFA64D, -- orange(ish)
+        color25  = 0xFFFF0000, -- red
+        -- private:
+        include_all = true,
+        exclude_all = false,
     },
 
     font = {
@@ -101,7 +115,14 @@ local ui = T{
 local status_icon_base = T{
     bar_index = -1,
     status_id = 0,
-    duration  = 0,
+    duration  = {
+       now  = 0,
+       init = 0,
+    },
+    tracked = {
+        status_id     = -1,
+        init_duration = -1,
+    },
     animation = 0,
     text = {
         id  = '',
@@ -112,7 +133,11 @@ local status_icon_base = T{
         id  = '',
         obj = nil,
     },
-    description = ''
+    bar = {
+        id  = '',
+        obj = nil,
+    },
+    description = '',
 };
 
 local status_icon_mt = {
@@ -128,11 +153,12 @@ local status_icon = {
 * Sensible status_icon => string conversation
 ]]--
 status_icon_mt.__tostring = function(self)
-    return string.format('%s { bar_index: %d, status_id: %d, duration: %d, active: %s }',
+    return string.format('%s { bar_index: %d, status_id: %d, duration: %d/%d, active: %s }',
         self.icon.id,
         self.bar_index,
         self.status_id,
-        self.duration,
+        self.duration.now,
+        self.duration.init,
         self.text.obj:GetVisible()
     );
 end
@@ -158,6 +184,12 @@ status_icon_base.setup = function(self, index)
     self.text.obj:SetColor(settings.font.color);
     self.text.obj:SetColorOutline(settings.font.outline);
 
+    if (settings.visual_aid.enabled) then
+        self.bar.id  = string.format('statustimers:status_icon[%d]:bar', self.bar_index);
+        self.bar.obj = AshitaCore:GetFontManager():Create(self.bar.id);
+        self.bar.obj:SetAutoResize(false);
+    end
+
     if (settings.font.outline ~= 0x00000000) then
         self.text.obj:SetDrawFlags(16);
     end
@@ -173,6 +205,10 @@ end
 status_icon_base.release = function(self)
     AshitaCore:GetFontManager():Delete(self.icon.id);
     AshitaCore:GetFontManager():Delete(self.text.id);
+
+    if (self.bar.obj ~= nil) then
+        AshitaCore:GetFontManager():Delete(self.bar.id);
+    end
 end
 
 --[[
@@ -200,6 +236,10 @@ status_icon_base.get_size = function (self)
     local size = SIZE.new()
     size.cx = math.max(settings.icons.size, self.text.dim.cx);
     size.cy = settings.icons.size + settings.icons.padding + self.text.dim.cy;
+
+    if (self.bar.obj ~= nil) then
+        size.cy = size.cy + settings.icons.padding + math.ceil(self.text.dim.cy / 1.5);
+    end
 
     return size;
 end
@@ -239,6 +279,72 @@ status_icon_base.place = function (self, container)
     self.text.obj:SetPositionX(pos.cx);
     self.text.obj:SetPositionY(pos.cy + settings.icons.size);
     self.text.obj:SetLocked(true);
+
+    if (self.bar.obj ~= nil) then
+        local size = self:get_size();
+        self.bar.obj:SetParent(container);
+        self.bar.obj:SetPositionX(pos.cx);
+        self.bar.obj:SetPositionY(pos.cy + settings.icons.size + settings.icons.padding + self.text.dim.cy);
+        self.bar.obj:GetBackground():SetWidth(size.cx);
+        self.bar.obj:GetBackground():SetHeight(math.ceil(self.text.dim.cy / 1.5));
+        self.bar.obj:SetLocked(true);
+    end
+end
+
+--[[
+* Check if this status should display visual aid (e.g. a coloured bar)
+*
+* @param {table} self - the status_icon
+* @returns {bool} - a flag if the icon should display visual aid
+]]--
+status_icon_base.has_visual_aid = function (self)
+    -- currently this only check if visual aid is enabled.
+    -- future versions might offer a way to include or exclude IDs
+    -- based on a list in the ini file.
+    if (settings.visual_aid.enabled) then
+
+        if (self.duration.init <= 0 or self.duration.init == INFINITE_DURATION) then
+            return false;
+        end
+
+        local filter_id = function (_, k)
+            return tonumber(k) == self.status_id;
+        end
+
+        local included = settings.visual_aid.include:countf(filter_id);
+        local excluded = settings.visual_aid.exclude:countf(filter_id);
+
+        if ((settings.visual_aid.include_all and excluded == 0) or
+            (settings.visual_aid.exclude_all and included ~= 0)) then
+            -- matched by wildcard and not explicitly excluded or
+            -- excluded by wildcard but explicitly included
+            return true;
+        elseif (excluded == 0 and included ~= 0) then
+            -- not explicitly excluded but explicitly included
+            return true;
+        end
+    end
+    -- no visual aid, neither excluded nor included
+    return false;
+end
+
+--[[
+* Track the status id and initial duration of another status icon.
+*
+* This method is mainly used in case a status icon expires and causes
+* the items to it's right to "shift left".
+*
+* @param {self} - the status_icon
+* @param {other} - the status_icon to track
+]]--
+status_icon_base.track = function (self, other)
+    if (other ~= nil) then
+        self.tracked.init_duration = other.duration.init;
+        self.tracked.status_id = other.status_id;
+    else
+        self.tracked.init_duration = -1;
+        self.tracked.status_id = -1;
+    end
 end
 
 --[[
@@ -246,6 +352,7 @@ end
 *
 * if status_id and duration are negative the status_icon will be hidden.
 *
+* @param {self} - the status_icon
 * @param {status_id} - the id of the status effect as used by FFXI
 * @param {duration} - the remaining duration of the status effect (in seconds)
 ]]--
@@ -253,21 +360,37 @@ status_icon_base.update = function (self, status_id, duration)
     if (status_id == -1 or duration == -1) then
         -- disabled
         self.status_id = status_id;
-        self.duration  = duration;
+        self.duration.now  = duration;
+        self.duration.init = duration;
 
         self.icon.obj:SetVisible(false);
         self.text.obj:SetVisible(false);
+
+        if (self.bar.obj ~= nil) then
+            self.bar.obj:SetVisible(false);
+            self.bar.obj:GetBackground():SetColor(0xFF000000);
+        end
         return true;
     end
 
     local pos = self:get_bar_pos();
-    if (self.duration ~= duration) then
+    if (self.duration.now ~= duration) then
+        if (self.status_id ~= status_id) then
+            if (self.tracked.status_id == status_id) then
+                -- this is a left-shift of an existing item
+                self.duration.init = self.tracked.init_duration;
+            else
+                -- initial duration
+                self.duration.init = duration;
+            end
+        end
+
         -- label needs updating
         local label = '';
         local dim = SIZE.new();
 
         if (duration == INFINITE_DURATION) then
-            label = '--';
+            label = '~';
         elseif (duration >= 3600) then
             label = string.format('%dh', duration / 3600);
         else
@@ -278,12 +401,37 @@ status_icon_base.update = function (self, status_id, duration)
             end
         end
 
-        self.duration = duration;
+        self.duration.now = duration;
         self.text.obj:SetText(label);
         self.text.obj:SetVisible(true);
         self.text.obj:GetTextSize(dim);
         self.text.obj:SetPositionX(pos.cx + ((self:get_size().cx - dim.cx) / 2));
         self.text.obj:SetVisible(duration > 5);
+
+        if (self.bar.obj ~= nil) then
+            if (self:has_visual_aid()) then
+                self.bar.obj:SetVisible(true);
+                self.bar.obj:GetBackground():SetVisible(true);
+
+                local progress = self.duration.now * 100.0 / self.duration.init;
+                local alpha = bit.band(self.bar.obj:GetBackground():GetColor(), 0xFF000000);
+                local color = 0;
+
+                if (progress > 75) then
+                    color = settings.visual_aid.color100;
+                elseif (progress > 50) then
+                    color = settings.visual_aid.color75;
+                elseif (progress > 25) then
+                    color = settings.visual_aid.color50;
+                else
+                    color = settings.visual_aid.color25;
+                end
+                color = bit.band(color, 0x00FFFFFF);
+                self.bar.obj:GetBackground():SetColor(bit.bor(alpha, color));
+            else
+                self.bar.obj:SetVisible(false);
+            end
+        end
     end
 
     if (self.status_id ~= status_id) then
@@ -321,7 +469,7 @@ status_icon_base.update_animation = function(self)
     end
 
     -- let's be a bit fancy for the last 15sec (this causes the icon to blink)
-    if (self.duration <= 15) then
+    if (self.duration.now <= settings.visual_aid.flash_at) then
         local color = self.icon.obj:GetBackground():GetColor();
         local alpha = bit.rshift(color, 24);
         local delta = bit.lshift(15, 24);
@@ -341,6 +489,12 @@ status_icon_base.update_animation = function(self)
         end
 
         self.icon.obj:GetBackground():SetColor(color);
+
+        if (self.bar.obj ~= nil and self:has_visual_aid()) then
+            local bar_alpha = bit.band(color, 0xFF000000);
+            local bar_color = bit.band(self.bar.obj:GetBackground():GetColor(), 0x00FFFFFF);
+            self.bar.obj:GetBackground():SetColor(bit.bor(bar_alpha, bar_color));
+        end
     end
 end
 
@@ -397,7 +551,7 @@ end
 * @param {self} - the status_icon
 ]]--
 status_icon_base.is_active = function(self)
-    return (self.status_id ~= -1 and self.duration > 0);
+    return (self.status_id ~= -1 and self.duration.now > 0);
 end
 
 --[[
@@ -461,17 +615,40 @@ local load_merged_settings = function(defaults)
         s.font.size    = config:GetUInt16(addon.name, 'font',   'size',    defaults.font.size);
         s.font.color   = config:GetString(addon.name, 'font',   'color',   nil) or string.format('0x%08x', defaults.font.color);
         s.font.outline = config:GetString(addon.name, 'font',   'outline', nil) or string.format('0x%08x', defaults.font.outline);
+
         s.icons.theme  = config:GetString(addon.name, 'icons',  'theme',   defaults.icons.theme);
         s.icons.size   = config:GetUInt16(addon.name, 'icons',  'size',    defaults.icons.size);
+
         s.layout.rows  = config:GetUInt16(addon.name, 'layout', 'rows',    defaults.layout.rows);
         s.layout.pos_x = config:GetUInt32(addon.name, 'layout', 'pos_x',   defaults.layout.pos_x);
         s.layout.pos_y = config:GetUInt32(addon.name, 'layout', 'pos_y',   defaults.layout.pos_y);
 
+        s.visual_aid.enabled  = config:GetBool(addon.name,   'visual aid', 'enabled',  defaults.visual_aid.enabled);
+        s.visual_aid.include  = config:GetString(addon.name, 'visual aid', 'include',  nil) or defaults.visual_aid.include:join(',');
+        s.visual_aid.exclude  = config:GetString(addon.name, 'visual aid', 'exclude',  nil) or defaults.visual_aid.exclude:join(',');
+        s.visual_aid.flash_at = config:GetUInt16(addon.name, 'visual aid', 'flash_at', defaults.visual_aid.flash_at);
+        s.visual_aid.color100 = config:GetString(addon.name, 'visual aid', 'color100', nil) or string.format('0x%08x', defaults.visual_aid.color100);
+        s.visual_aid.color75  = config:GetString(addon.name, 'visual aid', 'color75',  nil) or string.format('0x%08x', defaults.visual_aid.color75);
+        s.visual_aid.color50  = config:GetString(addon.name, 'visual aid', 'color50',  nil) or string.format('0x%08x', defaults.visual_aid.color50);
+        s.visual_aid.color25  = config:GetString(addon.name, 'visual aid', 'color25',  nil) or string.format('0x%08x', defaults.visual_aid.color25);
+
         s.misc.native_item_mask = config:GetUInt16(addon.name, 'misc', 'native_item_mask', defaults.misc.native_item_mask);
         s.misc.show_tooltips    = config:GetBool(addon.name,   'misc', 'show_tooltips',    defaults.misc.show_tooltips);
 
-        -- color and outline need to be converted from a number string to an actual number
+        -- post processing
+        s.visual_aid.include = T(s.visual_aid.include:split(',')):mapk(function (v, _) return v:trimex(); end);
+        s.visual_aid.exclude = T(s.visual_aid.exclude:split(',')):mapk(function (v, _) return v:trimex(); end);
+
+        s.visual_aid.include_all = s.visual_aid.include['*'] ~= nil;
+        s.visual_aid.exclude_all = s.visual_aid.exclude['*'] ~= nil;
+        -- all of the following are number strings that need to be parsed into actual numbers.
         -- doing it this way to be able to parse hex strings from the config instead of big numbers
+        s.visual_aid.color100 = tonumber(s.visual_aid.color100);
+        s.visual_aid.color75  = tonumber(s.visual_aid.color75);
+        s.visual_aid.color50  = tonumber(s.visual_aid.color50);
+        s.visual_aid.color25  = tonumber(s.visual_aid.color25);
+
+        -- same handling as for visual_aid.color*
         s.font.color   = tonumber(s.font.color);
         s.font.outline = tonumber(s.font.outline);
     end
@@ -488,18 +665,35 @@ local save_settings = function(data)
     local ini_file = string.format('%s.ini', addon.name);
 
     config:Delete(addon.name, ini_file);
+    -- font section
     config:SetValue(addon.name, 'font',   'family',  data.font.family);
     config:SetValue(addon.name, 'font',   'size',    tostring(data.font.size));
     config:SetValue(addon.name, 'font',   'color',   string.format('0x%08x', data.font.color));
     config:SetValue(addon.name, 'font',   'outline', string.format('0x%08x', data.font.outline));
+
+    -- icons section
     config:SetValue(addon.name, 'icons',  'theme',   data.icons.theme);
     config:SetValue(addon.name, 'icons',  'size',    tostring(data.icons.size));
+
+    -- layout section
     config:SetValue(addon.name, 'layout', 'rows',    tostring(data.layout.rows));
     config:SetValue(addon.name, 'layout', 'pos_x',   tostring(data.layout.pos_x));
     config:SetValue(addon.name, 'layout', 'pos_y',   tostring(data.layout.pos_y));
 
+    -- visual aid section
+    config:SetValue(addon.name, 'visual aid', 'enabled',  tostring(data.visual_aid.enabled));
+    config:SetValue(addon.name, 'visual aid', 'include',  data.visual_aid.include:join(','));
+    config:SetValue(addon.name, 'visual aid', 'exclude',  data.visual_aid.exclude:join(','));
+    config:SetValue(addon.name, 'visual aid', 'flash_at', tostring(data.visual_aid.flash_at));
+    config:SetValue(addon.name, 'visual aid', 'color100', string.format('0x%08x', data.visual_aid.color100));
+    config:SetValue(addon.name, 'visual aid', 'color75',  string.format('0x%08x', data.visual_aid.color75));
+    config:SetValue(addon.name, 'visual aid', 'color50',  string.format('0x%08x', data.visual_aid.color50));
+    config:SetValue(addon.name, 'visual aid', 'color25',  string.format('0x%08x', data.visual_aid.color25));
+
+    -- misc section
     config:SetValue(addon.name, 'misc',   'native_item_mask', tostring(data.misc.native_item_mask));
     config:SetValue(addon.name, 'misc',   'show_tooltips',    tostring(data.misc.show_tooltips));
+
     config:Save(addon.name, ini_file);
 end
 
@@ -635,6 +829,7 @@ local update_ui = function()
         ui.status_icons[i]:update_animation();
 
         if (perform_updates == true) then
+            ui.status_icons[i]:track(ui.status_icons[i + 1]);
             ui.status_icons[i]:update(get_status_id(i), get_status_duration(i));
 
             if (ui.status_icons[i]:is_active()) then
