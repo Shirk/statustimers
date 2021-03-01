@@ -167,8 +167,8 @@ end
 * Allocate and configure associated resources for thes icon.
 * _This method is not meant to be called directly_.
 *
-* @param {self} - the status_icon
-* @param {index} - the bar slot this icon will take (starting at 1)
+* @param {table} self - the status_icon
+* @param {number} index - the bar slot this icon will take (starting at 1)
 ]]--
 status_icon_base.setup = function(self, index)
     self.bar_index = index - 1;
@@ -200,7 +200,7 @@ end
 --[[
 * Clean up all resources associated with this status_icon
 *
-* @param {self} - the status_icon
+* @param {table} self - the status_icon
 ]]--
 status_icon_base.release = function(self)
     AshitaCore:GetFontManager():Delete(self.icon.id);
@@ -217,7 +217,7 @@ end
 * The bounding box is sized to contain both the background icon and the text
 * taking the settings.icons.size as well as settings.font.size into account.
 *
-* @param {self} - the status_icon
+* @param {table} self - the status_icon
 ]]--
 status_icon_base.get_size = function (self)
     if (status_icon_mt.post_render == false) then
@@ -247,7 +247,7 @@ end
 --[[
 * Returns the icons bar position based on it's index
 *
-* @param {self} - the status_icon
+* @param {table} self - the status_icon
 ]]--
 status_icon_base.get_bar_pos = function (self)
     local size = self:get_size();
@@ -264,8 +264,8 @@ end
 --[[
 * Places this status_icon into a container and positions it accodring to it's index
 *
-* @param {self} - the status_icon
-* @param {container} - a FontObject that will become the parent for this status_icon
+* @param {table} self - the status_icon
+* @param {table} container - a FontObject that will become the parent for this status_icon
 ]]--
 status_icon_base.place = function (self, container)
     local pos = self:get_bar_pos();
@@ -295,7 +295,7 @@ end
 * Check if this status should display visual aid (e.g. a coloured bar)
 *
 * @param {table} self - the status_icon
-* @returns {bool} - a flag if the icon should display visual aid
+* @return {bool} - a flag if the icon should display visual aid
 ]]--
 status_icon_base.has_visual_aid = function (self)
     -- currently this only check if visual aid is enabled.
@@ -334,8 +334,8 @@ end
 * This method is mainly used in case a status icon expires and causes
 * the items to it's right to "shift left".
 *
-* @param {self} - the status_icon
-* @param {other} - the status_icon to track
+* @param {table} self - the status_icon
+* @param {table} other - the status_icon to track
 ]]--
 status_icon_base.track = function (self, other)
     if (other ~= nil) then
@@ -352,9 +352,9 @@ end
 *
 * if status_id and duration are negative the status_icon will be hidden.
 *
-* @param {self} - the status_icon
-* @param {status_id} - the id of the status effect as used by FFXI
-* @param {duration} - the remaining duration of the status effect (in seconds)
+* @param {table} self - the status_icon
+* @param {number} status_id - the id of the status effect as used by FFXI
+* @param {number} duration - the remaining duration of the status effect (in seconds)
 ]]--
 status_icon_base.update = function (self, status_id, duration)
     if (status_id == -1 or duration == -1) then
@@ -370,7 +370,6 @@ status_icon_base.update = function (self, status_id, duration)
             self.bar.obj:SetVisible(false);
             self.bar.obj:GetBackground():SetColor(0xFF000000);
         end
-        return true;
     end
 
     local pos = self:get_bar_pos();
@@ -454,14 +453,12 @@ status_icon_base.update = function (self, status_id, duration)
             self.description = status_info.Description[1] or self.description;
         end
     end
-
-    return true;
 end
 
 --[[
 * Update the items transparency animation (only has any effect for the last 15sec)
 *
-* @param {self} - the status_icon
+* @param {table} self - the status_icon
 ]]--
 status_icon_base.update_animation = function(self)
     if (self:is_active() == false) then
@@ -510,8 +507,8 @@ end
  * Should either of these refer to a valid file on disk it will be used.
  * If neither of the two paths exists the game resources will be used.
  *
- * @param {self} - the status_icon
- * @param {status_id} - the status id as used by FFXI
+ * @param {table} self - the status_icon
+ * @param {number} status_id - the status id as used by FFXI
 ]]--
 status_icon_base.set_icon_from_theme = function(self, status_id)
     if (settings.icons.theme ~= 'default') then
@@ -548,7 +545,8 @@ end
 --[[
 * Query if this icon is displaying an active status or not.
 *
-* @param {self} - the status_icon
+* @param {table} self - the status_icon
+* @return {bool} - true/false depending on the items state
 ]]--
 status_icon_base.is_active = function(self)
     return (self.status_id ~= -1 and self.duration.now > 0);
@@ -557,9 +555,10 @@ end
 --[[
 * Wrapper to hit test both the image and label of this icon
 *
-* @param {self} - the status_icon
-* @param {x} - the x coordinate to test for
-* @param {y} - the y coordinate to test for
+* @param {table} self - the status_icon
+* @param {number} x - the x coordinate to test for
+* @param {number} y - the y coordinate to test for
+* @return {bool} - true if the hit test succeeded
 ]]--
 status_icon_base.hit_test = function(self, x, y)
     if (self:is_active()) then
@@ -571,7 +570,7 @@ end
 --[[
 * Try to cancel this status effect by sending a Cancel package
 *
-* @param {self} - the status_icon
+* @param {table} self - the status_icon
 ]]--
 status_icon_base.try_cancel = function(self)
     if (self:is_active()) then
@@ -590,7 +589,8 @@ end
 --[[
 * Returns a new status_icon
 *
-* @param {index} - the bar index this icon is assigned to
+* @param {number} index - the bar index this icon is assigned to
+* @return {table} a new status_icon for `index`
 ]]--
 status_icon.new = function (index)
     return setmetatable(status_icon_base:copy(true), status_icon_mt):setup(index);
@@ -604,7 +604,8 @@ end
 * Load an existing addon configuration and merge it with the provided defaults.
 * Returns the a table containing the merged configuration.
 *
-* @param {defaults} - a table holding the default settings
+* @param {table} defaults - a table holding the default settings
+* @return {table} - the merged settings data
 ]]--
 local load_merged_settings = function(defaults)
     local config = AshitaCore:GetConfigurationManager();
@@ -658,7 +659,7 @@ end
 --[[
 * Save the passed configuration table to disk.
 *
-* @param {data} - the updated settings to store in the addon's ini file
+* @param {table} data - the updated settings to store in the addon's ini file
 ]]--
 local save_settings = function(data)
     local config = AshitaCore:GetConfigurationManager();
@@ -703,6 +704,8 @@ end
 
 --[[
 * Return the current utc timestamp the game is using (from memory)
+*
+* @return {number} - the current utc timespame used by the client
 ]]--
 local get_real_utcstamp = function()
     local pointer = AshitaCore:GetPointerManager():Get(REALUTCSTAMP_ID);
@@ -716,7 +719,8 @@ end
 --[[
 * Return the current status id for the given index or -1 if no data is avilable.
 *
-* @param {index} - the status table index (starting at 1 up to MAX_STATUS)
+* @param {number} index - the status table index (starting at 1 up to MAX_STATUS)
+* @return {number} - the status id for the given table index
 ]]--
 local get_status_id = function(index)
     if (AshitaCore:GetMemoryManager() ~= nil) then
@@ -734,7 +738,8 @@ end
 * Return the remaining duration (in seconds) for the given status effect
 * or -1 if no data is avilable.
 *
-* @param {index} - the status table index (starting at 1 up to MAX_STATUS)
+* @param {number} index - the status table index (starting at 1 up to MAX_STATUS)
+* @return {number} - the remaining status duration in seconds or -1
 ]]--
 local get_status_duration = function(index)
     if (AshitaCore:GetMemoryManager() ~= nil) then
@@ -948,7 +953,7 @@ end
 *
 * Examples: 0 - hide all, 1 - show own, 2 - show party, 3 show all
 *
-* @param {visibility_mask} - the new visibility bitmask
+* @param {number} visibility_mask - the new visibility bitmask
 ]]--
 local set_native_status = function(visibility_mask)
     local pm = AshitaCore:GetPointerManager();
@@ -974,8 +979,9 @@ end
 * Try to cancel the status effect for the status icon at x,y.
 * Returns true if an icon was found.
 *
-* @param {x} - the x coordinate of the hit test
-* @param {y} - the y coordinate of the hit test
+* @param {number} x - the x coordinate of the hit test
+* @param {number} y - the y coordinate of the hit test
+* @return {bool} - true if the a status icon at x,y was found
 ]]--
 local check_status_cancel = function(x, y)
     local top_left = SIZE.new();
@@ -1001,8 +1007,8 @@ end
 --[[
 * Check if the mouse is hovering over a status item and show a tooltip if so
 *
-* @param {x} - the x coordinate for hit testing
-* @param {y} - the y coordinate for hit testing
+* @param {number} x - the x coordinate for hit testing
+* @param {number} y - the y coordinate for hit testing
 ]]--
 local maybe_show_tooltip = function(x, y)
     if (settings.misc.show_tooltips == false) then
@@ -1034,6 +1040,7 @@ local maybe_show_tooltip = function(x, y)
         ui.tooltip:SetVisible(false);
     end
 end
+
 ----------------------------------------------------------------------------------------------------
 -- Ashita addon callbacks
 ----------------------------------------------------------------------------------------------------
